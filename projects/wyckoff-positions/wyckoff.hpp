@@ -11,8 +11,8 @@ class Subspace
 {
 public:
     /* inherent from symop??*/
-    Subspace(const Eigen::Vector3d& basis_vec_0, const Eigen::Vector3d& basis_vec_1, const Eigen::Vector3d& basis_vec_2,
-             const Eigen::Vector3d& offset);
+    std::vector<Eigen::Vector3d> orthonormalize_basis(const Eigen::Vector3d& basis_vec_0, const Eigen::Vector3d& basis_vec_1, const Eigen::Vector3d& basis_vec_2);
+    Subspace(const Eigen::Vector3d& basis_vec_0, const Eigen::Vector3d& basis_vec_1, const Eigen::Vector3d& basis_vec_2, const Eigen::Vector3d& offset);
     Subspace(const Eigen::Matrix3d& basis_col_matrix, const Eigen::Vector3d& offset);
     Subspace();
     int get_dimension();
@@ -44,6 +44,10 @@ Subspace find_invariant_subspace(PeriodicGroup subgroup);
 
 std::vector<Subspace> find_symmetrically_equivalent_wyckoff_positions(std::vector<SymOp> coset,
                                                                       Subspace wyckoff_position);
+std::vector<Eigen::Vector3d> convert_subspace_to_vector(Subspace input_subspace, double tol);
+
+Eigen::Vector3d projector_operator(Eigen::Vector3d vect_a, Eigen::Vector3d vect_b);
+
 bool subspaces_are_equal(Subspace lhs, Subspace rhs, double tol);
 
 bool wyckoff_positions_are_equal(std::vector<Subspace> lhs, std::vector<Subspace> rhs, double tol);

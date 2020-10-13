@@ -2,36 +2,37 @@
 #include "../eigen-git-mirror/Eigen/Eigenvalues"
 #include <cmath>
 
-Subspace::Subspace(const Eigen::Vector3d& input_vec_0, const Eigen::Vector3d& input_vec_1,
-                   const Eigen::Vector3d& input_vec_2, const Eigen::Vector3d& offset)
-    : m_offset(offset)
+std::vector<Eigen::Vector3d> Subspace::orthonormalize_basis(const Eigen::Vector3d& input_vec_0, const Eigen::Vector3d& input_vec_1, const Eigen::Vector3d& input_vec_2)
 {
-//    double tol=1e-6;
-    Eigen::Vector3d basis_vec_0=input_vec_0.normalized();
-    Eigen::Vector3d basis_vec_1=input_vec_1.normalized();
-    Eigen::Vector3d basis_vec_2=input_vec_2.normalized();
-//    int v0=0, v1=0, v2=0;
+    Eigen::Vector3d output_vec_0=input_vec_0.normalized();
+    Eigen::Vector3d output_vec_1=input_vec_1 - projector_operator(input_vec_1,output_vec_0);
+    output_vec_1.normalize();
+    Eigen::Vector3d output_vec_2= input_vec_2 - projector_operator(input_vec_2, output_vec_0) -projector_operator(input_vec_2, output_vec_1);
+    output_vec_2.normalize();
+    return {output_vec_0, output_vec_1, output_vec_2};
+}
+
+Subspace::Subspace(const Eigen::Vector3d& input_vec_0, const Eigen::Vector3d& input_vec_1,
+                   const Eigen::Vector3d& input_vec_2, const Eigen::Vector3d& offset){
+    std::vector<Eigen::Vector3d> basis_vectors=orthonormalize_basis( input_vec_0, input_vec_1, input_vec_2);
+
+    m_offset = offset -projector_operator(offset, basis_vectors[0]) - projector_operator(offset,basis_vectors[1]) - projector_operator(offset, basis_vectors[2]);
     for (int i = 0; i < 3; ++i)
     {
-        m_basis_col_matrix(i, 0) = basis_vec_0(i);
-//        if (abs(basis_vec_0(i))<tol && v0==0){
-//            v0=1;}
-        m_basis_col_matrix(i, 1) = basis_vec_1(i);
-        m_basis_col_matrix(i, 2) = basis_vec_2(i);
+        m_basis_col_matrix(i, 0) = basis_vectors[0](i);
+        m_basis_col_matrix(i, 1) = basis_vectors[1](i);
+        m_basis_col_matrix(i, 2) = basis_vectors[2](i);
     }
 
-    //DONE: basis vectors are normalized
-    //minimize the offset (orthormal to the basis)
     //This may still be a different subspace though order if given axis, or plane could be define in different orders
-    //TODO: make sure planes are defined by orthoganol vectors?
+    //DONE: make sure planes are defined by orthoganol vectors?
+    //      ake sure offset is not in subspace
 }
 
 Subspace::Subspace(const Eigen::Matrix3d& input_basis_vectors, const Eigen::Vector3d& input_offset)
-    : m_basis_col_matrix(input_basis_vectors), m_offset(input_offset)
-{
-}
+    :Subspace(input_basis_vectors.col(0), input_basis_vectors.col(1), input_basis_vectors.col(2), input_offset) {}
 
-Subspace::Subspace():m_basis_col_matrix(Eigen::Matrix3d::Zero()), m_offset(Eigen::Vector3d::Zero()){}
+Subspace::Subspace(): m_offset(Eigen::Vector3d::Zero()) , m_basis_col_matrix(Eigen::Matrix3d::Zero()){}
 
 Eigen::Matrix3d Subspace::basis_col_matrix() const { return this->m_basis_col_matrix; }
 
@@ -189,9 +190,67 @@ std::vector<Subspace> find_symmetrically_equivalent_wyckoff_positions(std::vecto
     return equivalent_wyckoff_positions;
 }
 
+std::vector<Eigen::Vector3d> convert_subspace_to_vector(Subspace input_subspace, double tol)
+{
+    std::vector<Eigen::Vector3d> output_vector;
+    for( int i=0; i<3; i++)
+    {       Eigen::Vector3d temp_vector;
+        temp_vector<<input_subspace.basis_col_matrix()(0,i), input_subspace.basis_col_matrix()(1,i), input_subspace.basis_col_matrix()(2,i);
+        if ( temp_vector.norm()>tol)
+            {output_vector.push_back(temp_vector);}
+    }
+    return output_vector;
+}
+
+/*moved function to math.hh in avdv-factor-group
+ * Eigen::Vector3d projector_operator(Eigen::Vector3d vect_a, Eigen::Vector3d vect_b)
+{
+    //project a onto b
+    return ( vect_b*vect_b.transpose()*vect_a);
+}
+*/
+
 bool subspaces_are_equal(Subspace lhs, Subspace rhs, double tol)
 {
-    return (lhs.basis_col_matrix().isApprox(rhs.basis_col_matrix(), tol) && lhs.offset().isApprox(rhs.offset(), tol));
+// different depending on the dimension of the subspace.
+//
+    std::vector<Eigen::Vector3d> subspace_1_vectors = convert_subspace_to_vector(lhs, tol);
+    std::vector<Eigen::Vector3d> subspace_2_vectors = convert_subspace_to_vector(rhs, tol);
+
+    //subspaces have different dimensions:
+    if (subspace_1_vectors.size() !=subspace_2_vectors.size()){ return false;}
+
+    //subspaces are both dimension 3:
+    //here they shouls have exactly the same matrix and offset
+    if (subspace_1_vectors.size()==4 || subspace_1_vectors.size()==1)
+    { return (lhs.basis_col_matrix().isApprox(rhs.basis_col_matrix(), tol) && lhs.offset().isApprox(rhs.offset(), tol));}
+
+    //subspaces are both planes:
+    //here they should have the same normal vector and their offsets should have the components that are normal to the plane
+    if (subspace_1_vectors.size() ==3)
+    {
+        Eigen::Vector3d cross_vector_1=subspace_1_vectors[0].cross(subspace_1_vectors[1]).normalized();
+        Eigen::Vector3d cross_vector_2=subspace_2_vectors[0].cross(subspace_2_vectors[1]).normalized();
+        if (compare_vectors(cross_vector_1, cross_vector_2, tol)){
+            return compare_vectors(projector_operator(subspace_1_vectors[2], cross_vector_1), projector_operator(subspace_2_vectors[2], cross_vector_2), tol);
+                    }
+        return false;
+     }
+
+    //subspaces are both vectors:
+    //here the dot of both vectors hsould be 1 when normalized, and the offset should have a component perpendicular to the vector which is identical.
+    if (subspace_1_vectors.size() ==2)
+    {
+        if (abs(subspace_1_vectors[0].normalized().dot(subspace_2_vectors[0].normalized()))-1<tol)
+        {
+           Eigen::Vector3d offset_1= subspace_1_vectors[1]-projector_operator(subspace_1_vectors[1], subspace_1_vectors[0]);
+           Eigen::Vector3d offset_2= subspace_2_vectors[1]-projector_operator(subspace_2_vectors[1], subspace_2_vectors[0]);
+           return compare_vectors(offset_1, offset_2, tol);
+           
+        }
+        return false;
+    }
+
 
     //TODO: insufficient comparison, multiple vectors can span the same subspace
     // is A is contained in B and B is contained in A then they are the same subspace (projections?)

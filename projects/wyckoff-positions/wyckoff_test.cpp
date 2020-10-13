@@ -373,6 +373,32 @@ bool test_sympp_4d_construction()
 
     return false;
 }
+
+bool test_projector_operator()
+{
+    Eigen::Vector3d a;a<<1,1,1;
+    Eigen::Vector3d b; b<<0,0,1;
+    return (b==projector_operator(a,b));
+
+}
+
+bool test_convert_subspace_to_vectors(double tol)
+{
+
+    Eigen::Vector3d a;a<<1,0,0;
+    Eigen::Vector3d b;b<<0,1,0;
+    Eigen::Vector3d c;c<<0,0,1;
+    Eigen::Vector3d d;d<<0.5,0.5,0;
+
+    Subspace test_subspace(a,b,c,d);
+    std::vector<Eigen::Vector3d> expected_vector({a,b,c,d});
+    std::vector<Eigen::Vector3d> converted_vector = convert_subspace_to_vector(test_subspace, tol);
+//needs like comparing each vector to input vectors a ,b, c, and d
+    return false;
+}
+
+//bool 
+
 int main()
 {
     double tol = 1e-6;
